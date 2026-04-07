@@ -1,0 +1,6 @@
+torch>=2.0
+transformers>=4.38
+bitsandbytes>=0.43
+accelerate>=0.25
+datasets>=2.16
+evaluate>=0.4
