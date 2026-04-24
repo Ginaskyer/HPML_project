@@ -14,7 +14,7 @@ import bitsandbytes as bnb
 
 from config import TrainConfig
 from model_utils import prepare_model, save_lora_weights
-
+from rotation import fuse_rotation, fuse_weight, load_or_create_R1
 
 def tokenize_and_chunk(dataset, tokenizer, block_size):
     """Tokenize text and create fixed-length chunks for causal LM training."""

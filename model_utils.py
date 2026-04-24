@@ -5,11 +5,12 @@ Model loading, LoRA injection, and weight save/load utilities.
 import os
 import torch
 import torch.nn as nn
+import bitsandbytes as bnb
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from lora import LoRALinear
 from config import TrainConfig
-
+from rotation import fuse_rotation, fuse_weight, load_or_create_R1
 
 def get_bnb_config(quant_cfg):
     """Create BitsAndBytesConfig from our QuantConfig."""
@@ -22,22 +23,60 @@ def get_bnb_config(quant_cfg):
     )
 
 
-def load_model_and_tokenizer(cfg: TrainConfig):
-    """Load the quantized model and tokenizer."""
-    bnb_config = get_bnb_config(cfg.quant)
-
-    model = AutoModelForCausalLM.from_pretrained(
-        cfg.model_name,
-        quantization_config=bnb_config,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
+def load_model_and_tokenizer(cfg: TrainConfig, quantize: bool = True):
+    """Load the model (optionally 4-bit quantized) and tokenizer."""
+    kwargs = dict(torch_dtype=torch.bfloat16, device_map="auto")
+    if quantize:
+        kwargs["quantization_config"] = get_bnb_config(cfg.quant)
+    
+    model = AutoModelForCausalLM.from_pretrained(cfg.model_name, **kwargs)
 
     tokenizer = AutoTokenizer.from_pretrained(cfg.model_name)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     return model, tokenizer
+
+
+def quantize_linears_to_4bit(model, quant_cfg, skip_names=("lm_head",)):
+    """Replace every nn.Linear (outside skip_names) with bnb.nn.Linear4bit.
+
+    Must be called after any offline weight transformation (e.g. rotation fusion)
+    since 4-bit Params4bit stores weights in a packed layout that forbids
+    direct matmul on .data.
+    """
+    compute_dtype = getattr(torch, quant_cfg.bnb_4bit_compute_dtype)
+
+    to_replace = []
+    for name, module in model.named_modules():
+        if isinstance(module, nn.Linear) and not any(s in name for s in skip_names):
+            to_replace.append((name, module))
+
+    for name, module in to_replace:
+        parent_name, _, attr_name = name.rpartition(".")
+        parent = model.get_submodule(parent_name) if parent_name else model
+        device = module.weight.device
+
+        new_linear = bnb.nn.Linear4bit(
+            input_features=module.in_features,
+            output_features=module.out_features,
+            bias=module.bias is not None,
+            compute_dtype=compute_dtype,
+            compress_statistics=quant_cfg.bnb_4bit_use_double_quant,
+            quant_type=quant_cfg.bnb_4bit_quant_type,
+        )
+        new_linear.weight = bnb.nn.Params4bit(
+            module.weight.data,
+            requires_grad=False,
+            compress_statistics=quant_cfg.bnb_4bit_use_double_quant,
+            quant_type=quant_cfg.bnb_4bit_quant_type,
+        )
+        if module.bias is not None:
+            new_linear.bias = nn.Parameter(module.bias.data.clone(), requires_grad=False)
+        new_linear = new_linear.to(device)
+        setattr(parent, attr_name, new_linear)
+        del module
+    torch.cuda.empty_cache()
 
 
 def inject_lora(model, lora_cfg):
@@ -135,8 +174,43 @@ def load_lora_weights(model, load_path):
 
 
 def prepare_model(cfg: TrainConfig):
-    """Full pipeline: load quantized model, inject LoRA, freeze base."""
-    model, tokenizer = load_model_and_tokenizer(cfg)
+    """Full pipeline: load bf16 model -> fuse norms -> rotate -> quantize 4-bit
+    -> inject LoRA -> freeze base."""
+    # Load in bf16 first: rotation/norm-fusion must see full-precision weights,
+    # not the packed Params4bit layout produced by BitsAndBytesConfig.
+    model, tokenizer = load_model_and_tokenizer(cfg, quantize=False)
+    print(model)
+
+    # Untie lm_head from embed_tokens before any offline weight transform.
+    # Tied weights would cause fuse_weight to leak the final RMSNorm scale into
+    # the embedding table and rotate_embeddings+rotate_head to double-rotate the
+    # shared matrix.
+    if getattr(model.config, "tie_word_embeddings", False):
+        embed_weight = model.model.embed_tokens.weight
+        if model.lm_head.weight is embed_weight:
+            model.lm_head.weight = nn.Parameter(embed_weight.data.clone())
+        model.config.tie_word_embeddings = False
+
+    fuse_weight(model)
+
+    R1 = load_or_create_R1(mode="online",
+                           device="cuda",
+                           dim=model.config.hidden_size)
+    R1 = R1.weight.detach()
+    gpu_count = torch.cuda.device_count()
+    R1_per_gpu = {}
+    if gpu_count > 1:
+        print(f"[INFO] Detected {gpu_count} GPUs, creating R1 copies...")
+        for i in range(gpu_count):
+            R1_per_gpu[f"cuda:{i}"] = R1.to(f"cuda:{i}")
+            print(f"[INFO] R1 copied to cuda:{i}")
+    else:
+        R1_per_gpu["cuda:0"] = R1.to(device="cuda")
+    fuse_rotation(model, R1_per_gpu, None)
+
+    if cfg.quant.load_in_4bit:
+        quantize_linears_to_4bit(model, cfg.quant)
+
     injected = inject_lora(model, cfg.lora)
     freeze_base_model(model)
 
