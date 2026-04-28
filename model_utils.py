@@ -156,6 +156,67 @@ def save_lora_weights(model, save_path):
     print(f"Saved {len(lora_state_dict)} LoRA tensors to {save_path}/lora_weights.pt")
 
 
+def save_merged_model(model, tokenizer, save_path):
+    """
+    Dequantize 4-bit base weights, merge LoRA delta, replace every LoRALinear
+    with a plain nn.Linear, then write a standard HF checkpoint via
+    save_pretrained().  Mutates the model in-place — call after training is done.
+    """
+    import bitsandbytes.functional as BF
+
+    os.makedirs(save_path, exist_ok=True)
+
+    to_replace = [
+        (name, module)
+        for name, module in model.named_modules()
+        if isinstance(module, LoRALinear)
+    ]
+
+    for name, lora_module in to_replace:
+        parent_name, _, attr_name = name.rpartition(".")
+        parent = model.get_submodule(parent_name) if parent_name else model
+        base = lora_module.base_layer
+        device = next(base.parameters()).device
+
+        with torch.no_grad():
+            if isinstance(base, bnb.nn.Linear4bit):
+                w = base.weight
+                if w.quant_state is not None:
+                    weight_fp = BF.dequantize_4bit(
+                        w.data, w.quant_state
+                    ).to(dtype=torch.bfloat16, device=device)
+                else:
+                    weight_fp = w.data.to(dtype=torch.bfloat16, device=device)
+            else:
+                weight_fp = base.weight.data.to(dtype=torch.bfloat16, device=device)
+
+            delta_w = (
+                lora_module.lora_B.to(device) @ lora_module.lora_A.to(device)
+            ) * lora_module.scaling
+            merged = weight_fp + delta_w.to(dtype=weight_fp.dtype)
+
+        bias = base.bias
+        new_linear = nn.Linear(
+            lora_module.in_features,
+            lora_module.out_features,
+            bias=(bias is not None),
+        ).to(dtype=torch.bfloat16, device=device)
+        new_linear.weight = nn.Parameter(merged, requires_grad=False)
+        if bias is not None:
+            new_linear.bias = nn.Parameter(
+                bias.data.to(dtype=torch.bfloat16, device=device),
+                requires_grad=False,
+            )
+
+        setattr(parent, attr_name, new_linear)
+        del lora_module
+        torch.cuda.empty_cache()
+
+    model.save_pretrained(save_path)
+    tokenizer.save_pretrained(save_path)
+    print(f"Saved merged model ({len(to_replace)} layers merged) → {save_path}")
+
+
 def load_lora_weights(model, load_path):
     """Load LoRA adapter weights into the model."""
     weight_path = os.path.join(load_path, "lora_weights.pt")

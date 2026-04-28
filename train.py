@@ -13,7 +13,7 @@ from transformers import get_scheduler
 import bitsandbytes as bnb
 
 from config import TrainConfig
-from model_utils import prepare_model, save_lora_weights
+from model_utils import prepare_model, save_lora_weights, save_merged_model
 from rotation import fuse_rotation, fuse_weight, load_or_create_R1
 
 def tokenize_and_chunk(dataset, tokenizer, block_size):
@@ -150,6 +150,9 @@ def train():
 
     # Save final checkpoint
     save_lora_weights(model, os.path.join(cfg.output_dir, "final"))
+
+    # Save complete merged model in HuggingFace format
+    save_merged_model(model, tokenizer, os.path.join(cfg.output_dir, "merged"))
     print(f"\nTraining complete! Best val loss: {best_val_loss:.4f}")
 
 
