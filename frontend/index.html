@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Qwen3-0.6B — LoRA / QLoRA Benchmark</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" />
+  <link rel="stylesheet" href="style.css" />
+  <!-- Chart.js via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────── -->
+<header>
+  <div>
+    <h1>Qwen3-0.6B &mdash; LoRA / QLoRA Benchmark</h1>
+    <div class="subtitle">HPC Course Project &nbsp;|&nbsp; Real-time inference comparison</div>
+  </div>
+  <span id="status-dot" class="status-dot" title="Waiting for server…"></span>
+</header>
+
+<!-- ── Prompt bar ──────────────────────────────────────────────────────── -->
+<div class="prompt-bar">
+  <textarea id="prompt"
+            placeholder="Enter a prompt and press Run Comparison (or Ctrl+Enter)…"
+            rows="3">Explain the difference between LoRA and QLoRA in simple terms.</textarea>
+
+  <div class="controls">
+    <label class="token-label">
+      Max tokens: <strong id="token-val">128</strong>
+      <br />
+      <input id="max-tokens" type="range" min="16" max="512" step="16" value="128" />
+    </label>
+    <button id="run-btn">Run Comparison</button>
+  </div>
+</div>
+
+<!-- ── Side-by-side panels ─────────────────────────────────────────────── -->
+<div class="comparison">
+
+  <!-- LEFT — Baseline FP16 -->
+  <div class="panel left">
+    <div class="panel-header">
+      <span class="panel-label">Baseline</span>
+      <span class="panel-title">BF16 &nbsp;Qwen3-0.6B</span>
+    </div>
+
+    <div id="left-output" class="output-box placeholder">Awaiting prompt…</div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-name">Latency</div>
+        <div id="left-latency" class="metric-value">—</div>
+        <div class="metric-unit">ms</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-name">Throughput</div>
+        <div id="left-throughput" class="metric-value">—</div>
+        <div class="metric-unit">tokens / sec</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-name">GPU Memory</div>
+        <div id="left-memory" class="metric-value">—</div>
+        <div class="metric-unit">MB</div>
+      </div>
+      <div class="metric-card" style="grid-column: span 2;">
+        <div class="metric-name">GFLOPs / token</div>
+        <div id="left-gflops" class="metric-value">—</div>
+        <div class="metric-unit">theoretical estimate</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT — Optimized (LoRA / QLoRA) -->
+  <div class="panel right">
+    <div class="panel-header">
+      <span class="panel-label">Optimized</span>
+      <span class="panel-title">QLoRA</span>
+      <div class="quant-toggle">
+        <button class="quant-btn" data-mode="int4_base">INT4 base</button>
+        <button class="quant-btn active" data-mode="int4">INT4 QLoRA</button>
+      </div>
+    </div>
+
+    <div id="right-output" class="output-box placeholder">Awaiting prompt…</div>
+
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-name">Latency</div>
+        <div id="right-latency" class="metric-value">—</div>
+        <div class="metric-unit">ms</div>
+        <div id="delta-latency" class="metric-delta"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-name">Throughput</div>
+        <div id="right-throughput" class="metric-value">—</div>
+        <div class="metric-unit">tokens / sec</div>
+        <div id="delta-throughput" class="metric-delta"></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-name">GPU Memory</div>
+        <div id="right-memory" class="metric-value">—</div>
+        <div class="metric-unit">MB</div>
+        <div id="delta-memory" class="metric-delta"></div>
+      </div>
+    
+      <div class="metric-card" style="grid-column: span 2;">
+        <div class="metric-name">GFLOPs / token</div>
+        <div id="right-gflops" class="metric-value">—</div>
+        <div class="metric-unit">theoretical estimate</div>
+        <div id="delta-gflops" class="metric-delta"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Charts ───────────────────────────────────────────────────────────── -->
+<div class="chart-section">
+  <h2>Visual comparison</h2>
+  <div class="chart-row">
+    <div class="chart-wrap">
+      <h3>Latency (ms)</h3>
+      <canvas id="chart-latency"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3>Throughput (tok/s)</h3>
+      <canvas id="chart-throughput"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3>GPU Memory (MB)</h3>
+      <canvas id="chart-memory"></canvas>
+    </div>
+    <div class="chart-wrap">
+      <h3>GFLOPs / token</h3>
+      <canvas id="chart-gflops"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast ────────────────────────────────────────────────────────────── -->
+<div id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
