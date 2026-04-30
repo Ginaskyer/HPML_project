@@ -49,7 +49,7 @@ def compute_perplexity(model, dataloader, desc="Evaluating"):
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate full fine-tuning model")
-    parser.add_argument("--ckpt_path", type=str, default="outputs/best")
+    parser.add_argument("--ckpt_path", type=str, default=None)
     parser.add_argument("--precision", type=str, default="bf16",
                         choices=["bf16", "fp32"])
     args = parser.parse_args()
@@ -71,16 +71,18 @@ def main():
     test_dataset = tokenize_and_chunk(raw_dataset["test"], tokenizer, cfg.block_size)
     test_loader = DataLoader(
         test_dataset,
-        batch_size=args.batch_size,
+        batch_size=cfg.batch_size,
         shuffle=False,
         collate_fn=collate_fn,
         pin_memory=True,
     )
     print(f"Test samples: {len(test_dataset)}")
 
-    # Load fine-tuned model
     print("\n" + "=" * 60)
-    print(f"Evaluating FULL FINE-TUNED model ({args.precision})")
+    if args.ckpt_path is None:
+        print(f"Evaluating {args.precision.upper()} BASE model")
+    else:
+        print(f"Evaluating FULL FINE-TUNED model ({args.precision}) from {args.ckpt_path}")
     print("=" * 60)
 
     results = compute_perplexity(model, test_loader)
