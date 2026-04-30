@@ -1,4 +1,3 @@
-
 # Efficient LLM Inference via Quantization and LoRA Adaptation
 
 ## 1. Project Description
