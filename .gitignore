@@ -5,3 +5,6 @@ bf16/
 lora/
 *.safetensors
 *.pt
+
+README.md
+requirements.txt
