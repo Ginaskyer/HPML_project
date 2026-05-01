@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from transformers import get_scheduler
 
 from config import TrainConfig
-from model_utils import prepare_model, save_lora_weights, save_merged_model, cuda_sync, et_gpu_memory_gb, \
+from model_utils import prepare_model, save_lora_weights, save_merged_model, cuda_sync, get_gpu_memory_gb, \
     reset_gpu_memory
 from rotation import fuse_rotation, fuse_weight, load_or_create_R1
 
