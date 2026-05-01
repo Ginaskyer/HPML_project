@@ -9,6 +9,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from config import TrainConfig
 
+
 def print_trainable_params(model):
     """Print the number of trainable vs total parameters."""
     trainable = 0
@@ -58,11 +59,13 @@ def load_model_and_tokenizer(cfg: TrainConfig):
 
     return model, tokenizer
 
+
 def save_full_checkpoint(model, tokenizer, save_dir):
     """Save full fine-tuned model checkpoint."""
     os.makedirs(save_dir, exist_ok=True)
     model.save_pretrained(save_dir)
     tokenizer.save_pretrained(save_dir)
+
 
 import os
 import torch
@@ -91,3 +94,22 @@ def load_finetuned_weights(model, ckpt_path):
 
     print(f"Loaded {len(state_dict)} tensors from {weight_path}")
     return model
+
+
+def cuda_sync():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
+def reset_gpu_memory():
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+
+def get_gpu_memory_gb():
+    if not torch.cuda.is_available():
+        return 0.0, 0.0
+
+    allocated = torch.cuda.max_memory_allocated() / 1024 ** 3
+    reserved = torch.cuda.max_memory_reserved() / 1024 ** 3
+    return allocated, reserved

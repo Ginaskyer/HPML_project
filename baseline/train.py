@@ -4,16 +4,17 @@ Usage: python train.py  --precision bf16
 """
 
 import argparse
-import os
 import math
+import os
 import time
 import torch
-from torch.utils.data import DataLoader
 from datasets import load_dataset
+from torch.utils.data import DataLoader
 from transformers import get_scheduler
 
 from config import TrainConfig
-from model_utils import prepare_model,save_full_checkpoint
+from model_utils import prepare_model, save_full_checkpoint, cuda_sync, get_gpu_memory_gb, reset_gpu_memory
+
 
 def tokenize_and_chunk(dataset, tokenizer, block_size):
     """Tokenize text and create fixed-length chunks for causal LM training."""
@@ -52,6 +53,7 @@ def collate_fn(batch):
     input_ids = torch.tensor([item["input_ids"] for item in batch], dtype=torch.long)
     labels = torch.tensor([item["labels"] for item in batch], dtype=torch.long)
     return {"input_ids": input_ids, "labels": labels}
+
 
 def train(cfg: TrainConfig):
     os.makedirs(cfg.output_dir, exist_ok=True)
@@ -110,6 +112,32 @@ def train(cfg: TrainConfig):
     use_amp = (cfg.precision.lower() == "bf16" and model.device.type == "cuda")
     scaler = None  # bf16 does not need GradScaler
 
+    # -----------------------------
+    # GPU Warmup (not counted)
+    # -----------------------------
+    print("\nWarming up GPU...")
+    model.train()
+    warmup_steps = min(5, len(train_loader))
+    warmup_iter = iter(train_loader)
+
+    for _ in range(warmup_steps):
+        batch = next(warmup_iter)
+        batch = {k: v.to(model.device) for k, v in batch.items()}
+
+        if use_amp:
+            with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+                outputs = model(**batch)
+                loss = outputs.loss
+        else:
+            outputs = model(**batch)
+            loss = outputs.loss
+
+        loss.backward()
+        optimizer.zero_grad()
+
+    cuda_sync()
+    print(f"Warmup finished: {warmup_steps} steps")
+
     # Training loop
     print(f"\n{'=' * 60}")
     print(f"Starting full fine-tuning for {cfg.num_epochs} epochs")
@@ -120,9 +148,14 @@ def train(cfg: TrainConfig):
     global_step = 0
     best_val_loss = float("inf")
 
+    reset_gpu_memory()
+    cuda_sync()
+    training_start = time.time()
+
     for epoch in range(cfg.num_epochs):
         model.train()
         epoch_loss = 0.0
+        cuda_sync()
         epoch_start = time.time()
         optimizer.zero_grad()
 
@@ -158,20 +191,37 @@ def train(cfg: TrainConfig):
 
         # Epoch validation
         val_loss = evaluate_loss(model, val_loader, cfg.precision)
+        cuda_sync()
         epoch_time = time.time() - epoch_start
+        peak_allocated, peak_reserved = get_gpu_memory_gb()
         ppl = math.exp(val_loss) if val_loss < 100 else float("inf")
         print(
             f"\n--- Epoch {epoch + 1} done in {epoch_time:.1f}s | "
-            f"Val Loss: {val_loss:.4f} | Val PPL: {ppl:.2f} ---\n"
+            f"Val Loss: {val_loss:.4f} | Val PPL: {ppl:.2f} | "
+            f"Peak Allocated: {peak_allocated:.2f} GB | "
+            f"Peak Reserved: {peak_reserved:.2f} GB ---\n"
         )
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             save_full_checkpoint(model, tokenizer, os.path.join(cfg.output_dir, "best"))
 
+    cuda_sync()
+    total_training_time = time.time() - training_start
+    peak_allocated, peak_reserved = get_gpu_memory_gb()
+
+    print("\n" + "=" * 60)
+    print("FULL FINETUNING TRAINING SUMMARY")
+    print("=" * 60)
+    print(f"Total training time: {total_training_time:.1f}s")
+    print(f"Total training time: {total_training_time / 60:.2f} min")
+    print(f"Peak GPU allocated memory: {peak_allocated:.2f} GB")
+    print(f"Peak GPU reserved memory:  {peak_reserved:.2f} GB")
+    print(f"Best val loss: {best_val_loss:.4f}")
+    print("=" * 60)
+
     # Save final checkpoint
     save_full_checkpoint(model, tokenizer, os.path.join(cfg.output_dir, "final"))
-    print(f"\nTraining complete! Best val loss: {best_val_loss:.4f}")
 
 
 @torch.no_grad()
@@ -196,6 +246,7 @@ def evaluate_loss(model, dataloader, precision):
         total_steps += 1
 
     return total_loss / total_steps
+
 
 def main():
     parser = argparse.ArgumentParser()
