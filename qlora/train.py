@@ -3,18 +3,20 @@ QLoRA training script on WikiText-2.
 Usage: python train.py
 """
 
-import os
+import bitsandbytes as bnb
 import math
+import os
 import time
 import torch
-from torch.utils.data import DataLoader
 from datasets import load_dataset
+from torch.utils.data import DataLoader
 from transformers import get_scheduler
-import bitsandbytes as bnb
 
 from config import TrainConfig
-from model_utils import prepare_model, save_lora_weights, save_merged_model
+from model_utils import prepare_model, save_lora_weights, save_merged_model, cuda_sync, et_gpu_memory_gb, \
+    reset_gpu_memory
 from rotation import fuse_rotation, fuse_weight, load_or_create_R1
+
 
 def tokenize_and_chunk(dataset, tokenizer, block_size):
     """Tokenize text and create fixed-length chunks for causal LM training."""
@@ -158,7 +160,7 @@ def train():
                 if global_step % cfg.logging_steps == 0:
                     avg_loss = epoch_loss / (step + 1)
                     lr = optimizer.param_groups[0]["lr"]
-                    print(f"Epoch {epoch+1}/{cfg.num_epochs} | "
+                    print(f"Epoch {epoch + 1}/{cfg.num_epochs} | "
                           f"Step {global_step}/{num_training_steps} | "
                           f"Loss: {avg_loss:.4f} | LR: {lr:.2e}")
 
