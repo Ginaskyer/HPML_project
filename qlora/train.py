@@ -136,7 +136,7 @@ def train():
     cuda_sync()
     training_start = time.time()
 
-    for epoch in range(cfg.num_epochs)
+    for epoch in range(cfg.num_epochs):
         epoch_loss = 0.0
         cuda_sync()
         epoch_start = time.time()
