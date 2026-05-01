@@ -41,12 +41,14 @@ The project also includes an interactive benchmark dashboard for visualizing and
 
 ```
 Efficient-LLM-Inference/
-├── baseline_version/              # Full fine-tuning baseline
-│   ├── train_baseline.py
-│   ├── evaluate_baseline.py
-│   └── outputs/
+├── baseline/                     # Full fine-tuning baseline implementation
+│   ├── config.py                # Training/evaluation configuration
+│   ├── model_utils.py           # Model loading and utility functions
+│   ├── train.py                # Full fine-tuning training script
+│   ├── evaluate.py             # Baseline evaluation script
+│   └── outputs/                # Saved checkpoints and logs
 │
-├── main_version/                  # LoRA / QLoRA optimized implementation
+├── qlora/                  # LoRA / QLoRA optimized implementation
 │   ├── train.py
 │   ├── evaluate.py
 │   ├── model_utils.py
@@ -63,7 +65,7 @@ Efficient-LLM-Inference/
 
 ### Directory Overview
 
-* **baseline_version/**
+* **baseline/**
   Contains the full fine-tuning baseline used as the reference model for comparison.
 
 * **main_version/**
@@ -88,9 +90,16 @@ pip install -r requirements.txt
 ### Run Full Fine-Tuning Baseline
 
 ```bash
-cd baseline_version
-python train_baseline.py
-python evaluate_baseline.py
+cd baseline
+# Train with BF16 precision (recommended)
+python train.py --precision bf16 --output_dir ./outputs/bf16_run
+# Train with FP32 precision
+python train.py --precision fp32 --output_dir ./outputs/fp32_run
+
+# Evaluate the original pretrained model
+python evaluate.py --precision bf16
+# Evaluate the saved fine-tuned BF16 checkpoint
+python evaluate.py --ckpt_path ./outputs/bf16_run --precision bf16
 ```
 
 ### Run LoRA / QLoRA Fine-Tuning

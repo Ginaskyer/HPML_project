@@ -279,3 +279,21 @@ def prepare_model(cfg: TrainConfig):
     print_trainable_params(model)
 
     return model, tokenizer
+
+def cuda_sync():
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+
+
+def reset_gpu_memory():
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+
+
+def get_gpu_memory_gb():
+    if not torch.cuda.is_available():
+        return 0.0, 0.0
+
+    allocated = torch.cuda.max_memory_allocated() / 1024**3
+    reserved = torch.cuda.max_memory_reserved() / 1024**3
+    return allocated, reserved

@@ -102,6 +102,26 @@ def train():
         num_training_steps=num_training_steps,
     )
 
+    # Warmup
+    print("\nWarming up GPU...")
+    model.train()
+
+    warmup_steps = min(5, len(train_loader))
+    warmup_iter = iter(train_loader)
+
+    for _ in range(warmup_steps):
+        batch = next(warmup_iter)
+        batch = {k: v.to(model.device) for k, v in batch.items()}
+
+        outputs = model(**batch)
+        loss = outputs.loss
+        loss.backward()
+
+        optimizer.zero_grad()
+
+    cuda_sync()
+    print(f"Warmup finished: {warmup_steps} steps")
+
     # Training loop
     print(f"\n{'=' * 60}")
     print(f"Starting training for {cfg.num_epochs} epochs")
@@ -112,8 +132,13 @@ def train():
     global_step = 0
     best_val_loss = float("inf")
 
-    for epoch in range(cfg.num_epochs):
+    reset_gpu_memory()
+    cuda_sync()
+    training_start = time.time()
+
+    for epoch in range(cfg.num_epochs)
         epoch_loss = 0.0
+        cuda_sync()
         epoch_start = time.time()
 
         for step, batch in enumerate(train_loader):
@@ -139,10 +164,14 @@ def train():
 
         # Epoch validation
         val_loss = evaluate_loss(model, val_loader)
+        cuda_sync()
         epoch_time = time.time() - epoch_start
+        peak_allocated, peak_reserved = get_gpu_memory_gb()
         ppl = math.exp(val_loss) if val_loss < 100 else float("inf")
-        print(f"\n--- Epoch {epoch+1} done in {epoch_time:.1f}s | "
-              f"Val Loss: {val_loss:.4f} | Val PPL: {ppl:.2f} ---\n")
+        print(f"\n--- Epoch {epoch + 1} done in {epoch_time:.1f}s | "
+              f"Val Loss: {val_loss:.4f} | Val PPL: {ppl:.2f} | "
+              f"Peak Allocated: {peak_allocated:.2f} GB | "
+              f"Peak Reserved: {peak_reserved:.2f} GB ---\n")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -150,10 +179,22 @@ def train():
 
     # Save final checkpoint
     save_lora_weights(model, os.path.join(cfg.output_dir, "final"))
+    cuda_sync()
+    total_training_time = time.time() - training_start
+    peak_allocated, peak_reserved = get_gpu_memory_gb()
+
+    print("\n" + "=" * 60)
+    print("TRAINING SUMMARY")
+    print("=" * 60)
+    print(f"Total training time: {total_training_time:.1f}s")
+    print(f"Total training time: {total_training_time / 60:.2f} min")
+    print(f"Peak GPU allocated memory: {peak_allocated:.2f} GB")
+    print(f"Peak GPU reserved memory:  {peak_reserved:.2f} GB")
+    print(f"Best val loss: {best_val_loss:.4f}")
+    print("=" * 60)
 
     # Save complete merged model in HuggingFace format
     save_merged_model(model, tokenizer, os.path.join(cfg.output_dir, "merged"))
-    print(f"\nTraining complete! Best val loss: {best_val_loss:.4f}")
 
 
 @torch.no_grad()
