@@ -12,8 +12,8 @@ import argparse
 import math
 import time
 import torch
-from torch.utils.data import DataLoader
 from datasets import load_dataset
+from torch.utils.data import DataLoader
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from config import TrainConfig
@@ -132,6 +132,11 @@ def main():
         print("Loading quantized base model...")
         model, tokenizer = load_model_and_tokenizer(cfg)
 
+        if not args.baseline:
+            print("Loading quantized base model...")
+            model, tokenizer = prepare_model(cfg)
+            load_lora_weights(model, args.lora_path)
+
         test_dataset = tokenize_and_chunk(raw_dataset["test"], tokenizer, cfg.block_size)
         test_loader = DataLoader(
             test_dataset, batch_size=args.batch_size, shuffle=False,
@@ -140,19 +145,9 @@ def main():
         print(f"Test samples: {len(test_dataset)}")
 
         print("\n" + "=" * 60)
-        print("Evaluating BASE quantized model (no LoRA)")
+        print("Evaluating model")
         print("=" * 60)
         results["baseline"] = compute_perplexity(model, test_loader)
-
-        if not args.baseline:
-            print("\n" + "=" * 60)
-            print(f"Evaluating QLoRA model (loading from {args.lora_path})")
-            print("=" * 60)
-            inject_lora(model, cfg.lora)
-            freeze_base_model(model)
-            load_lora_weights(model, args.lora_path)
-            print_trainable_params(model)
-            results["qlora"] = compute_perplexity(model, test_loader)
 
     print_results(results)
 

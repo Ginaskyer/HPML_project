@@ -130,53 +130,25 @@ npm run dev
 ## 5. Experimental Results and Observations
 
 ### 5.1 Quantitative Comparison
-
-| Method           | Perplexity ↓ | Latency (s) ↓ | Throughput (tokens/s) ↑ | GPU Memory (GB) ↓ | Trainable Params |
-| ---------------- | ------------ | ------------- | ----------------------- | ----------------- | ---------------- |
-| Full Fine-Tuning | XX.XX        | XX.XX         | XX.XX                   | XX.XX             | 596M             |
-| LoRA             | XX.XX        | XX.XX         | XX.XX                   | XX.XX             | XXM              |
-| QLoRA            | XX.XX        | XX.XX         | XX.XX                   | XX.XX             | XXM              |
+| Method | Model Variant | Training Strategy | Loss ↓ | Perplexity ↓ | Inference Time (s) ↓ | Throughput (tokens/s) ↑ |
+|--------|---------------|------------------|--------|--------------|----------------------|--------------------------|
+| QLoRA Baseline | 4-bit Base Model | Quantized Only | 3.2703 | 26.32 | 6.57 | 45,577 |
+| QLoRA Fine-tuned | 4-bit Quantized + LoRA | QLoRA Adaptation | 2.6920 | 14.76 | 6.56 | 46,584 |
+| Full FT Baseline | BF16 Base Model | Full Precision Baseline | 3.1391 | 23.08 | 6.32 | 46,808 |
+| Full FT Fine-tuned | BF16 Full Fine-tuned Model | Full Fine-Tuning | 2.6090 | **13.59** | **6.32** | **46,815** |
 
 ---
 
 ### 5.2 Experimental Charts
 
-#### Perplexity Comparison
-
-![Perplexity Comparison](figures/perplexity.png)
-
-#### Inference Throughput Comparison
-
-![Throughput Comparison](figures/throughput.png)
-
-#### GPU Memory Consumption
-
-![GPU Memory](figures/gpu_memory.png)
+![Perplexity Comparison](figure.png)
 
 ---
 
 ### 5.3 Key Observations
 
-* Quantization significantly reduces GPU memory consumption and makes large model deployment feasible on limited hardware.
-* LoRA greatly decreases the number of trainable parameters while preserving competitive language modeling performance.
-* QLoRA achieves the best trade-off between memory efficiency and model quality among all tested approaches.
-* Merged checkpoints allow efficient standalone inference without requiring external LoRA adapters.
-* The benchmark dashboard provides an intuitive visualization for comparing all experimental settings.
-
----
-
-## 6. Authors
-
-* Victoria Logan
-* [Team Member Name]
-
-Course Project for High Performance Machine Learning
-
----
-
-## 7. GitHub Repository
-
-Source code, experiment scripts, and visualization dashboard are all maintained in this repository.
-
-```
-```
+- Both QLoRA and Full Fine-Tuning significantly reduce loss and perplexity compared with their corresponding baselines.
+- **QLoRA lowers perplexity from 26.32 to 14.76 (43.9% reduction)** while keeping inference latency almost unchanged.
+- **Full Fine-Tuning achieves the best final perplexity of 13.59**, indicating the strongest language modeling capability.
+- Inference speed across all variants remains relatively stable, showing that LoRA adaptation introduces negligible runtime overhead.
+- QLoRA updates only a small fraction of parameters while recovering most of the performance of full fine-tuning, demonstrating an efficient trade-off between accuracy and parameter efficiency.
