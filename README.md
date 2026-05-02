@@ -120,19 +120,13 @@ python evaluate.py --merged_path outputs/merged
 ### Launch Visualization Dashboard
 
 ```bash
-cd dashboard
-npm install
-npm run dev
-```
-### Demo
-
-```bash
 cd backend
 uvicorn main:app --host 0.0.0.0 --port 8001 --no-access-log
 
 cd frontend
 python -m http.server 3000
 ```
+
 ---
 
 ## 5. Experimental Results and Observations
