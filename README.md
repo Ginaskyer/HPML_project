@@ -55,7 +55,8 @@ Efficient-LLM-Inference/
 │   ├── config.py
 │   └── outputs/
 │
-├── dashboard/                     # Web-based benchmark visualization
+├── backend/                     # Web-based benchmark visualization backend
+├── frontend/                     # Web-based benchmark visualization frontend
 │
 ├── figures/                       # Charts, tables, and screenshots
 │
